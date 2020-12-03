@@ -8,6 +8,8 @@ from preprocessing.stateless_rnn import PreprocessV3RNN
 from utils.stateless_rnn.dataset_loader import DatasetLoaderStatelessRNN
 from utils.stateless_rnn.dataset_creator import DatasetCreatorV3
 
+pd.options.mode.chained_assignment = None  # default='warn'
+
 data_types_dict = {
     'row_id': 'int64',
     'timestamp': 'int64',

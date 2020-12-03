@@ -1,6 +1,6 @@
 """
 Contains class for Stateless RNN models.
-Such as StatelessRNN, StatelessRNNCuDNN (Running in CuDNN GPUG)
+Such as StatelessRNN, StatelessRNNCuDNN (Running in CuDNN GPU)
 """
 
 import tensorflow as tf
@@ -24,7 +24,7 @@ class StatelessRNN(tf.keras.Model):
 
         # Hidden layers
         self.rnnLayers = []
-        for i in range(nLayers - 1):
+        for _ in range(nLayers - 1):
             self.rnnLayers.append(tf.keras.layers.GRU(nUnits,
                                                       activation=tf.keras.activations.get(
                                                           activation),
@@ -73,7 +73,7 @@ class StatelessRNNCuDNN(tf.keras.Model):
 
         # Hidden layers
         self.rnnLayers = []
-        for i in range(nLayers - 1):
+        for _ in range(nLayers - 1):
             self.rnnLayers.append(tf.keras.layers.GRU(nUnits,
                                                       dropout=0.2,
                                                       return_sequences=True,
