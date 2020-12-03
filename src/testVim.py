@@ -3,9 +3,10 @@ import tensorflow as tf
 import numpy as np
 import config
 from models.stateless_rnn.stateless_rnn_models import StatelessRNNCuDNN
-from models.stateless_rnn.stateless_rnn_utils import CatEmbeddingLayers
-import preprocessing
-import utils
+from models.stateless_rnn.embedding_layers import CatEmbeddingLayers
+from preprocessing.stateless_rnn import PreprocessV3RNN
+from utils.stateless_rnn.dataset_loader import DatasetLoaderStatelessRNN
+from utils.stateless_rnn.dataset_creator import DatasetCreatorV3
 
 data_types_dict = {
     'row_id': 'int64',
@@ -39,7 +40,7 @@ ytrain = trainDf.answered_correctly
 yvalid = validDf.answered_correctly
 ytest = testDf.answered_correctly
 
-prepTrans = preprocessing.PreprocessV3RNN()
+prepTrans = PreprocessV3RNN()
 prepTrans.fit(trainDf, questionDf)
 trainDf = prepTrans.transform(trainDf)
 testDf = prepTrans.transform(testDf)
@@ -57,7 +58,7 @@ epochs = 10
 nSteps = 5
 
 # BUILD THE DATASETCREATOR
-datasetCreator = utils.DatasetCreatorV3(
+datasetCreator = DatasetCreatorV3(
     nCon=4, n_steps=nSteps, batch_size=batchSize)
 datasetCreator.createTrain(
     trainDf, config.STATELESS_TRAIN_PATH_TFRECORD_ROOT, nShards=5, start=0, end=5)
@@ -66,13 +67,13 @@ datasetCreator.createValid(
 testPred = datasetCreator.createPredict(testDf)
 
 # BUILD THE DATALOADER
-trainLoader = utils.DataLoaderStatelessRNN(
+trainLoader = DatasetLoaderStatelessRNN(
     config.STATELESS_TRAIN_PATH_TFRECORD_ROOT,
     nSteps=nSteps,
     name="train",
     nCon=nCon
 )
-validLoader = utils.DataLoaderStatelessRNN(
+validLoader = DatasetLoaderStatelessRNN(
     config.STATELESS_VALID_PATH_TFRECORD_ROOT,
     nSteps=nSteps,
     name="valid",

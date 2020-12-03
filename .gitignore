@@ -1,5 +1,7 @@
 inputs
 datasets
+# *__pycache__*
+*.pyc
+__pycache__/
 /models
-src/__pycache__
 /preprocessing
