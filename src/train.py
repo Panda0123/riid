@@ -1,11 +1,13 @@
 import argparse
 import config
-import model_dispatcher 
+import model_dispatcher
+
 
 def run(fold, model):
     print(fold)
     print(model)
-    return 
+    return
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -32,6 +32,9 @@ class PreprocessV3RNN(BaseEstimator, TransformerMixin):
     def transform(self, df):
         df = df[["timestamp", "prior_question_elapsed_time", "prior_question_had_explanation", "content_id", "user_id"]]
 
+        # TODO: add feature that tells if prior_question_had_explanation is False
+        #       so we can see that the previous test is diagnostic test
+
         # HANDLING NAs
         df["prior_question_elapsed_time"].fillna(-1, inplace=True)
         df.loc[:, "prior_question_had_explanation"] = \

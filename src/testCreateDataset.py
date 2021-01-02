@@ -1,12 +1,8 @@
 import pandas as pd
-import tensorflow as tf
 import config
-from models.stateless_rnn.stateless_rnn_models import StatelessRNNCuDNN
-from models.stateless_rnn.embedding_layers import CatEmbeddingLayers
 from preprocessing.stateless_rnn import PreprocessV3RNN
-from utils.stateless_rnn.dataset_loader import \
-                                        DatasetLoaderStatelessRNNBatch
 from utils.stateless_rnn.dataset_creator import DatasetCreatorV3
+import joblib as jb
 
 
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -14,7 +10,7 @@ pd.options.mode.chained_assignment = None  # default='warn'
 data_types_dict = {
     'row_id': 'int64',
     'timestamp': 'int64',
-    'user_id': 'int33',
+    'user_id': 'int32',
     'content_id': 'int16',
     'content_type_id': 'int8',
     'answered_correctly': 'int8',
@@ -77,62 +73,5 @@ datasetCreator.createValid(
     nShards=5,
     start=5,
     end=10)
-testPred = datasetCreator.createPredict(testDf)
 
-# BUILD THE DATALOADER
-trainLoader = DatasetLoaderStatelessRNNBatch(
-    config.STATELESS_TRAIN_PATH_TFRECORD_ROOT,
-    nSteps=nSteps,
-    name="train",
-    nCon=nCon,
-    nCat=nCat
-)
-
-validLoader = DatasetLoaderStatelessRNNBatch(
-    config.STATELESS_VALID_PATH_TFRECORD_ROOT,
-    nSteps=nSteps,
-    name="valid",
-    nCon=nCon,
-    nCat=nCat
-)
-
-trainDataset = trainLoader.loadDataset(
-    shuffle_buffer_size=1000, batch_size=batchSize)
-validDataset = validLoader.loadDataset(
-    shuffle_buffer_size=1000, batch_size=batchSize)
-
-# MODEL
-embLayer = CatEmbeddingLayers()
-embLayer.adapt(questionDf)
-model = StatelessRNNCuDNN(nSteps=nSteps, embLayer=embLayer)
-model.compile(
-    loss="binary_crossentropy",
-    optimizer=tf.keras.optimizers.Adam(lr=1e-2),
-    metrics=[tf.keras.metrics.AUC(), "accuracy"],
-    run_eagerly=False,
-)
-
-# callbacks
-alwaysCb = tf.keras.callbacks.ModelCheckpoint(
-            config.STATELESS_MODEL_ALWAYS_PATH,
-            save_freq="epoch",
-            save_weights_only=True)
-bestCb = tf.keras.callbacks.ModelCheckpoint(
-            config.STATELESS_MODEL_ALWAYS_PATH,
-            save_freq="epoch",
-            save_weights_only=True,
-            mode="max",
-            monitor="val_auc")
-
-model.fit(trainDataset, epochs=epochs,
-          validation_data=validDataset, callbacks=[alwaysCb, bestCb])
-
-
-model.evaluate(testPred, ytest)
-# try:
-# model.evaluate((testPred, ytest))
-# except as ex:
-# print(ex)
-# print(testPred[0].shape)
-# print(testPred[1].shape)
-# print(len(ytest))
+jb.dump(prepTrans, config.STATELESS_PREPPROCESSING_PATH)
