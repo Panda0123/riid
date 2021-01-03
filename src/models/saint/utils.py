@@ -10,6 +10,55 @@ import torch.nn.functional as F
 import sys
 
 
+def shouldSaveBest(currMetric, bestMetric, direction="minimize"):
+    """
+    args:
+        direction: if should save if < best or > best: default (minimize)
+    """
+    if direction == "minimize":
+        if currMetric < bestMetric:
+            return True
+    elif direction == "maximize":
+        if currMetric > bestMetric:
+            return True
+    else:
+        raise ValueError(
+            f"direction:{direction} must either be maximize or minimize")
+    return False
+
+
+def getModel(padIdx, nOov, device):
+    # maxTarget [padIdx, negative, postive]
+    return Tutturu(maxStep=100, embDim=512, padIdx=padIdx+nOov,
+                   dropout=0., expansion=4,
+                   nHeadsEncoder=8, nHeadsDecoder=8,
+                   nEncoderLayers=3, nDecoderLayers=3,
+                   maxPartUnique=9, maxExUnique=13524,
+                   maxCorUnique=4, maxETUnique=303, maxLTUnique=1443,
+                   maxTarget=3, device=device)
+
+
+def getDataLoader(filePath, bufferSize,
+                  sosIdx, nOov, bS, nWorkers):
+    dataIter = utils.loadIterDataset(filePath,
+                                     bufferSize=bufferSize,
+                                     sosIdx=sosIdx,
+                                     nOov=nOov)
+    return DataLoader(dataIter,
+                      batch_size=bS,
+                      num_workers=nWorkers,
+                      collate_fn=utils.collate_fn)
+
+
+def getDataPath():
+    home = os.path.expanduser("~")
+    # identify if I'm using wsl2 or windows
+    if platform.system == "Windows":
+        return (home + "/data/kaggle/riid/valid.tfrecord",
+                home + "/data/kaggle/riid/valid.tfrecord")
+    else:
+        return (home + "/dataLnk/kaggle/riid/valid.tfrecord",
+                home + "/dataLnk/kaggle/riid/train.tfrecord")
 def splitDataframe(df, chunkSize=100):
     chunks = list()
     numberChunks = math.ceil(len(df) / chunkSize)
@@ -128,9 +177,9 @@ def overFit(sample, model, opt, lossFn, scheduler, padIdx, nOov, device):
     padIdx += 1
     lss = float("inf")
     while lss > 0.000005:
-        src= (sample[0][0].to(device), sample[0][1].to(device))
+        src = (sample[0][0].to(device), sample[0][1].to(device))
         trg = (sample[1][0].to(device), sample[1][1].to(device),
-                sample[1][2].to(device))
+               sample[1][2].to(device))
         with torch.no_grad():
             # remove sos token
             # decrement labels 0-padIdx, 1-negative, 2-positive
@@ -184,14 +233,15 @@ def evalEpoch(model, validLoader, lossFn, padIdx, nOov, device):
         # ignore padding
         auc = roc_auc_score(y[mask].cpu() - 1,
                             F.softmax(yHat[mask, 1:], dim=-1)[:, -1].cpu())
-    return loss.item(), auc
+    return {"loss": loss.item(), "auc": auc}
 
 
-def saveCkpt(model, opt, loss, epoch, fileName, scheduler=None):
+def saveCkpt(model, opt, loss, auc, epoch, fileName, scheduler=None):
     dctSave = {
         "modelStateDct": model.state_dict(),
         "optStateDct": opt.state_dict(),
         "loss": loss,
+        "auc": auc,
         "epoch": epoch,
     }
     if scheduler is not None:
@@ -199,13 +249,24 @@ def saveCkpt(model, opt, loss, epoch, fileName, scheduler=None):
 
     torch.save(dctSave, fileName)
 
+
+def loadPrevMetrics(fileName):
+    loadedDct = torch.load(fileName)
+    return {
+        "loss": loadedDct["loss"],
+        "auc": loadedDct["auc"],
+        "epoch": loadedDct["epoch"]
+    }
+
+
 def loadCkpt(fileName, model, opt, scheduler=None):
     loadedDct = torch.load(fileName)
     initDct = {
         "model": model,
         "opt": opt,
         "loss": loadedDct["loss"],
-        "epoch": loadedDct["epoch"]
+        "epoch": loadedDct["epoch"],
+        "auc": loadedDct["auc"]
     }
     initDct["model"].load_state_dict(loadedDct["modelStateDct"])
     initDct["opt"].load_state_dict(loadedDct["optStateDct"])
@@ -215,3 +276,57 @@ def loadCkpt(fileName, model, opt, scheduler=None):
         initDct["scheduler"] = scheduler
         initDct["scheduler"].load_state_dict(loadedDct["schedulerStateDct"])
     return initDct
+
+
+def findLR(dataLoader,
+           model,
+           lossFn,
+           opt,
+           nOov,
+           device,
+           initLr=1e-8,
+           maxLr=10.,
+           beta=0.98):
+    num = len(dataLoader)-1
+    mult = (maxLr / initLr) ** (1/num)
+    lr = initLr
+    opt.param_groups[0]['lr'] = lr
+    avgLoss = 0.
+    bestLoss = 0.
+    batchNum = 0
+    losses = []
+    lrsLog = []
+    for i, (src, trg) in enumerate(dataLoader):
+        batchNum += 1
+        src = (src[0].to(device), src[1].to(device))
+        trg = (trg[0].to(device), trg[1].to(device), trg[2].to(device))
+        with torch.no_grad():
+            lbls = trg[-1][1:].reshape(-1) - (nOov - 1)
+        trg = tuple(feat[:-1] for feat in trg)
+        opt.zero_grad()
+        outs = model(src, trg)
+
+        outs = outs.reshape(-1, outs.shape[-1])
+        loss = lossFn(outs, lbls)
+
+        # Compute the smoothed loss
+        # beta*avgLoss + (1-beta)*currLoss
+        avgLoss = beta * avgLoss + (1 - beta) * loss.data[0]
+        # avgLoss / (1 - beta^batchNum)
+        smoothedLoss = avgLoss / (1 - beta**batchNum)
+        # Stop if the loss is exploding
+        if batchNum > 1 and smoothedLoss > 4 * bestLoss:
+            return lrsLog, losses
+        # Record the best loss
+        if smoothedLoss < bestLoss or batchNum == 1:
+            bestLoss = smoothedLoss
+        # Store the values
+        losses.append(smoothedLoss)
+        lrsLog.append(math.log10(lr))
+        # Do the SGD step
+        loss.backward()
+        opt.step()
+        # Update the lr for the next step
+        lr *= mult
+        opt.param_groups[0]['lr'] = lr
+    return lrsLog, losses

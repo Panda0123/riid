@@ -18,7 +18,7 @@ nSteps = 5
 prepTrans = jb.load(config.STATELESS_PREPPROCESSING_PATH)
 questionDf = prepTrans.questionDf
 
-# BUILD THE DATALOADER
+# INITIALIZE THE DATALOADER
 trainLoader = DatasetLoaderStatelessRNNBatch(
     config.STATELESS_TRAIN_PATH_TFRECORD_ROOT,
     nSteps=nSteps,
@@ -35,6 +35,7 @@ validLoader = DatasetLoaderStatelessRNNBatch(
     nCat=nCat
 )
 
+# LOAD DATASETLOADER
 trainDataset = trainLoader.loadDataset(
     shuffle_buffer_size=1000, batch_size=batchSize)
 validDataset = validLoader.loadDataset(

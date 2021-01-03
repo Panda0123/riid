@@ -12,6 +12,7 @@ import time
 from transformer import Tutturu
 import utils
 
+
 def getModel(padIdx, nOov, device):
     # maxTarget [padIdx, negative, postive]
     return Tutturu(maxStep=100, embDim=512, padIdx=padIdx+nOov,
@@ -21,6 +22,7 @@ def getModel(padIdx, nOov, device):
                    maxPartUnique=9, maxExUnique=13524,
                    maxCorUnique=4, maxETUnique=303, maxLTUnique=1443,
                    maxTarget=3, device=device)
+
 
 def main():
     # initialize device
@@ -55,13 +57,6 @@ def main():
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt)
     nEpochs = 5
 
-    sample = next(iter(dataLoader))
-    print(sample[1][-1].shape)
-    print(sample[0][-1].shape)
-    # utils.overFit(sample, model, opt, lossFn, scheduler, padIdx, nOov, device)
-    # lbls = trg[-1].reshape(-1)
-    # outs shape: [seqLen, N, 1]
-    # src, trg = next(iter(dataLoader))
     logInterval = 100
     padIdx += 1
     for epoch in range(nEpochs):
@@ -116,6 +111,10 @@ def main():
         validLoss, validAUC = utils.evalEpoch(model, dataLoader, lossFn,
                                               padIdx, nOov, device)
         print("Valid_Loss:%.4f Valid_AUC:%.4f" % (validLoss, validAUC))
+        # SAVE MODEL
+        utils.saveCkpt(model, opt, lossFn, epoch,
+                       fileName, scheduler)
+
 
 if __name__ == "__main__":
     main()
