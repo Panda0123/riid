@@ -178,7 +178,7 @@ class Tutturu(nn.Module):
     def mkMask(self, mat):
         seqLen, N = mat.shape
         mask = torch.tril(torch.ones(seqLen, seqLen))
-        return mask
+        return mask.to(self.device)
 
     def forward(self, src, trg):
         # src: (exerciseID, part)

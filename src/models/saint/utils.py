@@ -124,11 +124,13 @@ def collate_fn(data):
              torch.hstack(batchCor)))
 
 
-def overFit(sample, model, opt, lossFn, scheduler, padIdx, nOov):
+def overFit(sample, model, opt, lossFn, scheduler, padIdx, nOov, device):
     padIdx += 1
     lss = float("inf")
     while lss > 0.000005:
-        src, trg = sample
+        src= (sample[0][0].to(device), sample[0][1].to(device))
+        trg = (sample[1][0].to(device), sample[1][1].to(device),
+                sample[1][2].to(device))
         with torch.no_grad():
             # remove sos token
             # decrement labels 0-padIdx, 1-negative, 2-positive
@@ -148,9 +150,8 @@ def overFit(sample, model, opt, lossFn, scheduler, padIdx, nOov):
             # filterout paddings
             mask = (lbls != padIdx)
             # ignore padding
-            auc = roc_auc_score(lbls[mask] - 1,
-                                F.softmax(outs[mask, 1:],
-                                          dim=-1)[:, -1])
+            auc = roc_auc_score(lbls[mask].cpu() - 1,
+                                F.softmax(outs[mask, 1:], dim=-1)[:, -1].cpu())
             # torch.sigmoid(outs[mask, -1]))
         scheduler.step(lss)
         print(f"Loss:{lss:.2f} AUC:{auc:.2f}")
@@ -181,6 +182,36 @@ def evalEpoch(model, validLoader, lossFn, padIdx, nOov, device):
         # filter out paddings
         mask = (y != padIdx)
         # ignore padding
-        auc = roc_auc_score(y[mask] - 1,
-                            F.softmax(yHat[mask, 1:], dim=-1)[:, -1])
+        auc = roc_auc_score(y[mask].cpu() - 1,
+                            F.softmax(yHat[mask, 1:], dim=-1)[:, -1].cpu())
     return loss.item(), auc
+
+
+def saveCkpt(model, opt, loss, epoch, fileName, scheduler=None):
+    dctSave = {
+        "modelStateDct": model.state_dict(),
+        "optStateDct": opt.state_dict(),
+        "loss": loss,
+        "epoch": epoch,
+    }
+    if scheduler is not None:
+        dctSave["schedulerStateDct"] = scheduler.state_dict()
+
+    torch.save(dctSave, fileName)
+
+def loadCkpt(fileName, model, opt, scheduler=None):
+    loadedDct = torch.load(fileName)
+    initDct = {
+        "model": model,
+        "opt": opt,
+        "loss": loadedDct["loss"],
+        "epoch": loadedDct["epoch"]
+    }
+    initDct["model"].load_state_dict(loadedDct["modelStateDct"])
+    initDct["opt"].load_state_dict(loadedDct["optStateDct"])
+
+    if scheduler is not None:
+        assert len(loadedDct) > 4, "No scheduler in file"
+        initDct["scheduler"] = scheduler
+        initDct["scheduler"].load_state_dict(loadedDct["schedulerStateDct"])
+    return initDct
