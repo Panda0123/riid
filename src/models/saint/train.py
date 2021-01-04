@@ -9,16 +9,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import roc_auc_score
 
 from .transformer import Tutturu
 from . import utils
 
 
-def run(bS, nEpochs, bufferSize, logInterval,
+def run(bufferSize, logInterval, writerPath=None,
         alwaysPath=None, bestPath=None, monitor=None):
-    # initialize device
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     if monitor == "loss":
         direction = "minimize"
@@ -28,14 +27,31 @@ def run(bS, nEpochs, bufferSize, logInterval,
         bestMetric = float("-inf")
     else:
         raise ValueError(f"monitor is {monitor} must be either loss or auc")
-    # LOAD DATASET
-    trainFP, validFP = utils.getDataPath()
+    
+    if writerPath is not None:
+        writer = SummaryWriter(writerPath)
+
+    # initialize device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # dataset parameters
     padIdx = -1
     sosIdx = -2
     nOov = 2  # for padIdx and sos token(for trg)
     nGPU = torch.cuda.device_count()
     nWorkers = 4 * nGPU if nGPU > 0 else 1
 
+    # trainig parameters
+    lr = 1e-3
+    nEpochs = 30
+    bS = 64
+    if bS == 64:
+        trainNBS = 9072  # train dataset has 9,072 batches when bS=64
+        validNBS = 4536  # valid dataset has 4,536 batches when bS=64
+    totalTrainSteps = bS * trainNBS
+
+    # LOAD DATASET
+    trainFP, validFP = utils.getDataPath()
     dataLoader = partial(utils.getDataLoader,
                          bufferSize=bufferSize,
                          sosIdx=sosIdx,
@@ -43,36 +59,36 @@ def run(bS, nEpochs, bufferSize, logInterval,
                          bS=bS,
                          nWorkers=nWorkers)
     trainLoader = dataLoader(filePath=trainFP)
-    # valid dataset has 4,536 batches when bS=64
     validLoader = dataLoader(filePath=validFP)
+
 
     # INITIALIZE MODEL
     model = utils.getModel(padIdx, nOov, device).to(device)
     lossFn = nn.CrossEntropyLoss(ignore_index=padIdx+1)  # padIdx at 0
-    lr = 1e-3
-    opt = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999), eps=1e-8)
-    # TODO: change scheduler to 1cycle 
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(opt)
+    opt = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.99), eps=1e-8)
+    scheduler = optim.lr_scheduler.OneCycleLR(opt,
+            max_lr=lr,
+            total_steps=totalTrainSteps,
+            anneal_strategy="linear")
+
     # load model
     if alwaysPath is not None and os.path.exists(alwaysPath):
         loadedDct = utils.loadCkpt(alwaysPath, model, opt, scheduler)
-        model = loadedDct["models"].to(device)
+        model = loadedDct["model"].to(device)
         opt = loadedDct["opt"]
         scheduler = loadedDct["scheduler"]
         strtEpoch = loadedDct["epoch"]
-        print(f"[Loaded Existing Model] prev_loss:{loadedDct['loss']:.4f}",
-              f"prev_auc:{loadedDct['auc']:.4f} prev_epoch:{strtEpoch}")
+        print(f"[Loaded Always Model] prev_loss:{loadedDct['loss']:.4f}",
+              f"prev_auc:{loadedDct['auc']:.4f} curr_epoch:{strtEpoch+1}")
         loadedDct = utils.loadPrevMetrics(bestPath)
         bestMetric = loadedDct[monitor]
         print(f"[Loaded Best Model] best_loss:{loadedDct['loss']:.4f}",
               f"best_auc:{loadedDct['auc']:.4f}",
-              f"best_epoch:{loadedDct['epoch']}")
+              f"best_epoch:{loadedDct['epoch']+1}")
     else:
         strtEpoch = 0
-        # TODO: write function for warm up start if first train
 
     padIdx += 1
-    nEpochs += strtEpoch
     for epoch in range(strtEpoch, nEpochs):
         model.train()
         runningLoss = 0.
@@ -105,8 +121,9 @@ def run(bS, nEpochs, bufferSize, logInterval,
             # BACKWARD PASS
             loss.backward()
             opt.step()
+            scheduler.step()
 
-            # Logs
+            # Batch Logs
             lossValue = loss.item()
             runningLoss += lossValue
             epochLoss += lossValue
@@ -115,8 +132,15 @@ def run(bS, nEpochs, bufferSize, logInterval,
                 print("[%d %d] %.2fms/step Loss:%.4f" %
                       (epoch+1, i+1, runningBatchTime*1000/logInterval,
                        runningLoss / logInterval))
+                if writerPath is not None:
+                    writer.add_scalar("running_train_loss",
+                            runningLoss / logInterval,
+                            epoch * trainNBS + i)
                 runningLoss = 0.
                 runningBatchTime = 0.
+            
+
+        # Epoch Logs
         print("[%d] Total_Batch:%d Train_Loss:%.4f" %
               (epoch + 1, i + 1, epochLoss / (i + 1)),
               end=" ")
@@ -125,18 +149,28 @@ def run(bS, nEpochs, bufferSize, logInterval,
                                       padIdx, nOov, device)
         print("Valid_Loss:%.4f Valid_AUC:%.4f" %
               (metricsDict["loss"], metricsDict["auc"]))
-        scheduler.step(epochLoss / (i + 1))
+        if writerPath is not None:
+            writer.add_scalar("train_loss",
+                    epochLoss / (i + 1),
+                    global_step=epoch)
+            writer.add_scalar("valid_loss",
+                    metricsDict["loss"],
+                    global_step=epoch)
+            writer.add_scalar("valid_auc",
+                    metricsDict["auc"],
+                    global_step=epoch)
         # SAVE MODEL
         if alwaysPath is not None:
             utils.saveCkpt(model, opt, metricsDict["loss"], metricsDict["auc"],
-                           epoch, alwaysPath, scheduler)
+                           epoch + 1, alwaysPath, scheduler)
 
             if utils.shouldSaveBest(metricsDict[monitor],
                                     bestMetric, direction):
                 utils.saveCkpt(model, opt,
                                metricsDict["loss"], metricsDict["auc"],
-                               epoch, bestPath, scheduler)
+                               epoch + 1, bestPath, scheduler)
                 bestMetric = metricsDict[monitor]
+        writer.close()
 
 
 if __name__ == "__main__":
@@ -144,4 +178,4 @@ if __name__ == "__main__":
     nEpochs = 5  # args.nepochs
     bufferSize = 100  # args.buffer
     logInterval = 100  # args.log
-    run(bS, nEpochs, bufferSize, logInterval)
+    run(bufferSize, logInterval, writerPath)

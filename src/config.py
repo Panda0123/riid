@@ -1,4 +1,4 @@
-from os
+import os
 import platform
 
 home = os.path.expanduser("~")
@@ -16,7 +16,7 @@ QUESTION_PATH_CSV = PROJECT_PATH + "inputs/questions.csv"
 STATELESS_PREPPROCESSING_PATH =\
     PROJECT_PATH + "utils/DNN/prepTransStatelessRNN.joblib"
 
-STATELESS_TRAIN_PATH_TFRECORD_ROOT =\
+# STATELESS_TRAIN_PATH_TFRECORD_ROOT =\
 
 STATELESS_VALID_PATH_TFRECORD_ROOT =\
     PROJECT_PATH + "datasets/stateless_rnn/valid/"
@@ -27,5 +27,6 @@ STATELESS_MODEL_BEST_PATH =\
     PROJECT_PATH + "/models/DNN/stateless_rnn/best/"
 
 # === SAINT ===
-SAINT_MODEL_ALWAYS_PATH = PROJECT_PATH + "/models/DNN/saint/always/always.pth"
-SAINT_MODEL_BEST_PATH = PROJECT_PATH + "/models/DNN/saint/best/best.pth"
+SAINT_MODEL_ALWAYS_PATH = PROJECT_PATH + "/models/DNN/saint/alwaysSaint.pth"
+SAINT_MODEL_BEST_PATH = PROJECT_PATH + "/models/DNN/saint/bestSaint.pth"
+SAINT_LOG_PATH = PROJECT_PATH + "/logs/saint/"

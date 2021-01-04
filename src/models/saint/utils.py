@@ -1,13 +1,18 @@
+import math
+import sys
+from functools import partial
+import pickle as pkl
+import os
+import platform
+
 import torch
 import tfrecord
-import pickle as pkl
-from functools import partial
 import numpy as np
 import pandas as pd
-import math
 from sklearn.metrics import roc_auc_score
 import torch.nn.functional as F
-import sys
+from torch.utils.data import DataLoader
+from .transformer import Tutturu
 
 
 def shouldSaveBest(currMetric, bestMetric, direction="minimize"):
@@ -40,14 +45,13 @@ def getModel(padIdx, nOov, device):
 
 def getDataLoader(filePath, bufferSize,
                   sosIdx, nOov, bS, nWorkers):
-    dataIter = utils.loadIterDataset(filePath,
-                                     bufferSize=bufferSize,
+    dataIter = loadIterDataset(filePath, bufferSize=bufferSize,
                                      sosIdx=sosIdx,
                                      nOov=nOov)
     return DataLoader(dataIter,
                       batch_size=bS,
                       num_workers=nWorkers,
-                      collate_fn=utils.collate_fn)
+                      collate_fn=collate_fn)
 
 
 def getDataPath():
@@ -278,7 +282,7 @@ def loadCkpt(fileName, model, opt, scheduler=None):
     return initDct
 
 
-def findLR(dataLoader,
+def findLearningRate(dataLoader,
            model,
            lossFn,
            opt,
@@ -287,7 +291,11 @@ def findLR(dataLoader,
            initLr=1e-8,
            maxLr=10.,
            beta=0.98):
-    num = len(dataLoader)-1
+
+    for i, data in enumerate(dataLoader):
+        pass
+    print(i)
+    num = i
     mult = (maxLr / initLr) ** (1/num)
     lr = initLr
     opt.param_groups[0]['lr'] = lr
@@ -311,7 +319,7 @@ def findLR(dataLoader,
 
         # Compute the smoothed loss
         # beta*avgLoss + (1-beta)*currLoss
-        avgLoss = beta * avgLoss + (1 - beta) * loss.data[0]
+        avgLoss = beta * avgLoss + (1 - beta) * loss.item()
         # avgLoss / (1 - beta^batchNum)
         smoothedLoss = avgLoss / (1 - beta**batchNum)
         # Stop if the loss is exploding
