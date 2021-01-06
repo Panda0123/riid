@@ -42,12 +42,12 @@ def run(bufferSize, logInterval, writerPath=None,
     nWorkers = 4 * nGPU if nGPU > 0 else 1
 
     # trainig parameters
-    lr = 1e-3
+    lr = 1e-3  # still the best
     nEpochs = 30
     bS = 64
     if bS == 64:
-        trainNBS = 9072  # train dataset has 9,072 batches when bS=64
-        validNBS = 4536  # valid dataset has 4,536 batches when bS=64
+        trainNBS = 36056  # valid dataset has 36,056 batches when bS=64
+        validNBS = 9072  # valid dataset has 9,072 batches when bS=64
     totalTrainSteps = bS * trainNBS
 
     # LOAD DATASET
@@ -58,6 +58,9 @@ def run(bufferSize, logInterval, writerPath=None,
                          nOov=nOov,
                          bS=bS,
                          nWorkers=nWorkers)
+    print("TrainFP:", trainFP)
+    print("ValidFP", validFP)
+    sys.exit()
     trainLoader = dataLoader(filePath=trainFP)
     validLoader = dataLoader(filePath=validFP)
 

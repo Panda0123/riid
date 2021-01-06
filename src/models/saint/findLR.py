@@ -15,7 +15,6 @@ import pickle as pkl
 import joblib as jb
 import matplotlib.pyplot as plt
 
-from transformer import Tutturu
 import utils
 
 
@@ -29,6 +28,7 @@ def main():
 
     # LOAD DATASET
     trainFP, validFP = utils.getDataPath()
+    print("TrainFP:", trainFP)
     padIdx = -1
     sosIdx = -2
     nOov = 2  # for padIdx and sos token(for trg)
@@ -43,7 +43,7 @@ def main():
                          bS=bS,
                          nWorkers=nWorkers)
     trainLoader = dataLoader(filePath=trainFP)
-    # valid dataset has 4,536 batches when bS=64
+    # valid dataset has 9,072 batches when bS=64
     # validLoader = dataLoader(filePath=validFP)
 
     # INITIALIZE MODEL

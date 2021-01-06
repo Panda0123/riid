@@ -12,7 +12,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from .transformer import Tutturu
+from transformer import Tutturu
 
 
 def shouldSaveBest(currMetric, bestMetric, direction="minimize"):
@@ -57,12 +57,14 @@ def getDataLoader(filePath, bufferSize,
 def getDataPath():
     home = os.path.expanduser("~")
     # identify if I'm using wsl2 or windows
-    if platform.system == "Windows":
+    if platform.system() == "Windows":
+        return (home + "/dataLnk/kaggle/riid/train.tfrecord",
+                home + "/dataLnk/kaggle/riid/valid.tfrecord")
+    else:
         return (home + "/data/kaggle/riid/valid.tfrecord",
                 home + "/data/kaggle/riid/valid.tfrecord")
-    else:
-        return (home + "/dataLnk/kaggle/riid/valid.tfrecord",
-                home + "/dataLnk/kaggle/riid/train.tfrecord")
+
+
 def splitDataframe(df, chunkSize=100):
     chunks = list()
     numberChunks = math.ceil(len(df) / chunkSize)
